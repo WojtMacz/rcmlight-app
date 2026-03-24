@@ -21,7 +21,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
 import {
   useMaterialGroupTemplates,
   useCreateMaterialGroupTemplate,

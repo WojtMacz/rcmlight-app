@@ -143,7 +143,7 @@ export interface Criticality {
   id: string;
   causeId: string;
   safety: number;
-  impact: number; // legacy, not used in UI
+  impact?: number; // legacy, not used in UI
   quality: number;
   production: number;
   frequency: number;

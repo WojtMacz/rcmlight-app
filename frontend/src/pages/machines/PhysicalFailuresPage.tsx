@@ -131,7 +131,7 @@ function CauseCard({
   let wkLabel = '';
   if (cause.criticality) {
     const c = cause.criticality;
-    const wk = ((c.safety + c.impact + c.quality + c.production + c.frequency) / 5 +
+    const wk = ((c.safety + (c.availability ?? 0) + c.quality + c.production + c.frequency) / 5 +
       (c.repairCost + c.laborTime) / 2) / 2;
     wkLabel = `WK = ${wk.toFixed(1)}`;
   }
@@ -225,7 +225,7 @@ function PFCard({
   const maxWk = pf.causes.reduce((max, c) => {
     if (!c.criticality) return max;
     const cr = c.criticality;
-    const wk = ((cr.safety + cr.impact + cr.quality + cr.production + cr.frequency) / 5 +
+    const wk = ((cr.safety + (cr.availability ?? 0) + cr.quality + cr.production + cr.frequency) / 5 +
       (cr.repairCost + cr.laborTime) / 2) / 2;
     return Math.max(max, wk);
   }, -1);
