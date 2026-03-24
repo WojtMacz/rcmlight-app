@@ -404,7 +404,11 @@ function SortableSystemNode({
   const updateSystem = useUpdateSystem(machineId);
   const deleteSystem = useDeleteSystem(machineId);
 
-  const nextAssemblyNumber = `${system.number}.${system.assemblies.length + 1}`;
+  const maxSubNumber = system.assemblies.reduce((max, a) => {
+    const sub = parseInt(a.number.split('.').pop() ?? '0', 10);
+    return isNaN(sub) ? max : Math.max(max, sub);
+  }, 0);
+  const nextAssemblyNumber = `${system.number}.${maxSubNumber + 1}`;
 
   return (
     <div ref={setNodeRef} style={style} className="rounded-lg overflow-hidden">

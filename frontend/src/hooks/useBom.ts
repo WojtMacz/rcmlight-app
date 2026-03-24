@@ -95,7 +95,10 @@ export function useCreateAssembly(machineId: string) {
     mutationFn: ({ systemId, data }: { systemId: string; data: { number: string; name: string } }) =>
       api.post(`/systems/${systemId}/assemblies`, data),
     onSuccess: () => { toast.success('Zespół dodany'); invalidate(); },
-    onError: () => toast.error('Błąd podczas dodawania zespołu'),
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(msg ?? 'Błąd podczas dodawania zespołu');
+    },
   });
 }
 
