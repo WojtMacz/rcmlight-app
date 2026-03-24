@@ -22,7 +22,7 @@ services:
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.devcompose
     container_name: rcmlight_backend
     restart: unless-stopped
     depends_on:

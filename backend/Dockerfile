@@ -1,37 +1,21 @@
-# ── Stage 1: deps ──────────────────────────────────────────
-FROM node:20-alpine AS deps
+FROM node:20-alpine
 WORKDIR /app
+
+RUN apk add --no-cache openssl
+
 COPY package*.json ./
 COPY prisma ./prisma/
-RUN npm ci --ignore-scripts
 
-# ── Stage 2: build ─────────────────────────────────────────
-FROM node:20-alpine AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+# Install ALL deps (including TypeScript/devDeps) for build
+RUN npm ci --include=dev
+
 COPY . .
 RUN npx prisma generate
 RUN npm run build
 
-# ── Dev stage (used by docker-compose.yml) ─────────────────
-FROM node:20-alpine AS dev
-WORKDIR /app
-RUN npm install -g nodemon ts-node
-COPY package*.json ./
-COPY prisma ./prisma/
-RUN npm ci
-EXPOSE 3001
-CMD ["npm", "run", "dev"]
+# Remove devDeps after build
+RUN npm prune --production
 
-# ── Stage 3: production runtime (must be last — Railway default) ──
-FROM node:20-alpine AS production
-WORKDIR /app
 ENV NODE_ENV=production
-
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/prisma ./prisma
-COPY package*.json ./
-
 EXPOSE 3001
-CMD ["node", "dist/server.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]
