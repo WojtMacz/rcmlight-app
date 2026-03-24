@@ -1,0 +1,65 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: rcmlight_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rcmlight
+      POSTGRES_PASSWORD: rcmlight_dev
+      POSTGRES_DB: rcmlight
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U rcmlight']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: rcmlight_backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://rcmlight:rcmlight_dev@db:5432/rcmlight
+      NODE_ENV: development
+      PORT: 3001
+      JWT_ACCESS_SECRET: dev-access-secret-change-in-prod
+      JWT_REFRESH_SECRET: dev-refresh-secret-change-in-prod
+      JWT_ACCESS_EXPIRES_IN: 15m
+      SUPER_ADMIN_JWT_SECRET: dev-super-admin-secret-change-in-prod
+      CORS_ORIGINS: http://localhost:5173
+    ports:
+      - '3001:3001'
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    command: sh -c "npx prisma migrate deploy && npx prisma db seed && npm run dev"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: dev
+    container_name: rcmlight_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      VITE_API_URL: http://localhost:3001/api/v1
+    ports:
+      - '5173:5173'
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  pgdata:

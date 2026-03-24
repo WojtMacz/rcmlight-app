@@ -1,0 +1,329 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// MULTI-TENANCY
+// ============================================================
+
+model Company {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  logoUrl   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  // Domyślne parametry analizy (można nadpisać per maszyna)
+  defaultDowntimeCostPerHour    Decimal @default(1000) @db.Decimal(12, 2)
+  defaultTechnicianHourlyCost   Decimal @default(80)   @db.Decimal(12, 2)
+  defaultAllowedUnavailability  Decimal @default(0.03) @db.Decimal(6, 4)
+
+  users        User[]
+  machines     Machine[]
+  inviteTokens InviteToken[]
+
+  criteriaCriteria       CriticalityCriteria[]
+  materialGroupTemplates MaterialGroupTemplate[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  role         Role     @default(ANALYST)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  companyId     String
+  company       Company        @relation(fields: [companyId], references: [id])
+  refreshTokens RefreshToken[]
+}
+
+enum Role {
+  ADMIN
+  ANALYST
+  VIEWER
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  expiresAt DateTime
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================
+// BOM — STRUKTURA MASZYNY (4 poziomy)
+// ============================================================
+
+model Machine {
+  id                        String   @id @default(cuid())
+  number                    String
+  name                      String
+  description               String?
+  machineDowntimeCostPerHour Decimal  @default(0) @db.Decimal(12, 2)
+  technicianHourlyCost       Decimal  @default(0) @db.Decimal(12, 2)
+  allowedUnavailability      Decimal  @default(0.03) @db.Decimal(6, 4)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id])
+  systems   System[]
+}
+
+model System {
+  id     String @id @default(cuid())
+  number Int
+  name   String
+
+  machineId  String
+  machine    Machine      @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  assemblies Assembly[]
+  functions  FunctionDef[] @relation("SystemFunctions")
+}
+
+model Assembly {
+  id     String @id @default(cuid())
+  number String
+  name   String
+
+  systemId       String
+  system         System          @relation(fields: [systemId], references: [id], onDelete: Cascade)
+  materialGroups MaterialGroup[]
+  functions      FunctionDef[]   @relation("AssemblyFunctions")
+}
+
+model MaterialGroup {
+  id       String @id @default(cuid())
+  code     String
+  name     String
+  category String
+
+  assemblyId       String
+  assembly         Assembly         @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  spareParts       SparePart[]
+  physicalFailures PhysicalFailure[]
+}
+
+model SparePart {
+  id            String  @id @default(cuid())
+  name          String
+  catalogNumber String?
+
+  materialGroupId String
+  materialGroup   MaterialGroup @relation(fields: [materialGroupId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================
+// ANALIZA RCM — FUNKCJE I USZKODZENIA
+// ============================================================
+
+model FunctionDef {
+  id          String        @id @default(cuid())
+  code        String
+  description String
+  standard    String
+  level       FunctionLevel
+
+  systemId   String?
+  system     System?   @relation("SystemFunctions", fields: [systemId], references: [id])
+  assemblyId String?
+  assembly   Assembly? @relation("AssemblyFunctions", fields: [assemblyId], references: [id])
+
+  functionalFailures FunctionalFailure[]
+}
+
+enum FunctionLevel {
+  SYSTEM
+  ASSEMBLY
+}
+
+model FunctionalFailure {
+  id          String @id @default(cuid())
+  code        String
+  description String
+
+  functionId       String
+  function         FunctionDef       @relation(fields: [functionId], references: [id], onDelete: Cascade)
+  physicalFailures PhysicalFailure[]
+}
+
+model PhysicalFailure {
+  id          String   @id @default(cuid())
+  code        String
+  description String
+  mtbfMonths  Decimal? @db.Decimal(8, 2)
+
+  functionalFailureId String
+  functionalFailure   FunctionalFailure @relation(fields: [functionalFailureId], references: [id], onDelete: Cascade)
+
+  materialGroupId String
+  materialGroup   MaterialGroup @relation(fields: [materialGroupId], references: [id])
+
+  causes FailureCause[]
+}
+
+model FailureCause {
+  id          String @id @default(cuid())
+  code        String
+  description String
+
+  physicalFailureId String
+  physicalFailure   PhysicalFailure @relation(fields: [physicalFailureId], references: [id], onDelete: Cascade)
+
+  criticality Criticality?
+  pmTask      PMTask?
+}
+
+// ============================================================
+// WSKAŹNIK KRYTYCZNOŚCI
+// ============================================================
+
+model Criticality {
+  id String @id @default(cuid())
+
+  // Wskaźnik Konsekwencji — każdy 0–3
+  safety       Int @default(0) // S — Bezpieczeństwo
+  impact       Int @default(0) // I — Wpływ na dalszy proces (legacy, nieużywane)
+  quality      Int @default(0) // Q — Jakość
+  production   Int @default(0) // P — Produkcja
+  frequency    Int @default(0) // F — Częstotliwość/MTBF
+  availability Int @default(0) // D — Dostępność części zamiennych
+  // WK_konsekwencji = avg(S, Q, P, F, D)
+
+  // Wskaźnik Pracochłonności — każdy 0–3
+  repairCost Int @default(0) // C — Koszty awarii
+  laborTime  Int @default(0) // L — Pracochłonność
+  // WP = avg(C, L)
+
+  // WK_final = avg(WK_konsekwencji, WP)
+
+  // Składowe kosztów (opcjonalne, do kalkulacji)
+  downtimeHours       Decimal? @db.Decimal(10, 2) // hDT — czas postoju [h]
+  qualityLossCost     Decimal? @db.Decimal(12, 2) // kjak — koszty jakościowe [zł]
+  secondaryDamageCost Decimal? @db.Decimal(12, 2) // kwtorne — koszty wtórne [zł]
+  sparepartCost       Decimal? @db.Decimal(12, 2) // kc.z. — koszt części zamiennych [zł]
+  repairManHours      Decimal? @db.Decimal(10, 2) // rbhT — czas naprawy [rbh]
+
+  causeId String       @unique
+  cause   FailureCause @relation(fields: [causeId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================
+// ZADANIA PM
+// ============================================================
+
+model PMTask {
+  id          String     @id @default(cuid())
+  taskType    PMTaskType
+  description String
+  assignedTo  String?
+
+  isActive                  Boolean  @default(true)
+  plannedDowntimeH          Decimal? @db.Decimal(10, 2) // hDT planowane postoje [h]
+  sparepartCost             Decimal? @db.Decimal(12, 2) // kc.z. [zł]
+  repairManHours            Decimal? @db.Decimal(10, 2) // rbhT [rbh]
+  calculatedFrequencyMonths Decimal? @db.Decimal(8, 2)  // wyliczona częstotliwość [miesiące]
+  finalFrequencyMonths      Int?                         // zatwierdzona częstotliwość [miesiące]
+  totalCostPM               Decimal? @db.Decimal(12, 2) // koszt całkowity PM [zł]
+
+  causeId String       @unique
+  cause   FailureCause @relation(fields: [causeId], references: [id], onDelete: Cascade)
+}
+
+enum PMTaskType {
+  REDESIGN      // Przeprojektowanie
+  PDM           // Obsługa diagnostyczna (PdM)
+  PM_INSPECTION // PM Inspekcja
+  PM_OVERHAUL   // PM Remont średni/bieżący
+  RTF           // Obsługa uszkodzeniowa (Run To Failure)
+}
+
+// ============================================================
+// KONFIGURACJA — KRYTERIA KRYTYCZNOŚCI
+// ============================================================
+
+enum CriteriaCategory {
+  SAFETY        // S — Bezpieczeństwo
+  IMPACT        // I — Wpływ na dalszy proces (zachowane dla kompatybilności)
+  QUALITY       // Q — Jakość
+  PRODUCTION    // P — Produkcja
+  FREQUENCY     // F — Częstotliwość/MTBF
+  REPAIR_COST   // C — Koszty awarii
+  LABOR         // L — Pracochłonność
+  AVAILABILITY  // D — Dostępność części zamiennych
+}
+
+model CriticalityCriteria {
+  id          String           @id @default(cuid())
+  companyId   String
+  company     Company          @relation(fields: [companyId], references: [id])
+  category    CriteriaCategory
+  level       Int              // 0, 1, 2, 3
+  label       String
+  description String
+  updatedAt   DateTime         @updatedAt
+  updatedBy   String?
+
+  @@unique([companyId, category, level])
+}
+
+// ============================================================
+// KONFIGURACJA — SŁOWNIK GRUP MATERIAŁOWYCH
+// ============================================================
+
+model MaterialGroupTemplate {
+  id                  String   @id @default(cuid())
+  companyId           String
+  company             Company  @relation(fields: [companyId], references: [id])
+  code                String
+  name                String
+  category            String
+  categoryName        String
+  description         String?
+  inspectionStandards String?
+  typicalCauses       String?
+  isActive            Boolean  @default(true)
+  sortOrder           Int      @default(0)
+
+  @@unique([companyId, code])
+}
+
+// ============================================================
+// SUPER ADMIN — oddzielny od tenantów
+// ============================================================
+
+model SuperAdmin {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+}
+
+// ============================================================
+// ZAPROSZENIA — jednorazowe tokeny do rejestracji użytkownika
+// ============================================================
+
+model InviteToken {
+  id        String   @id @default(cuid())
+  token     String   @unique @default(cuid())
+  email     String
+  role      Role     @default(ANALYST)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
