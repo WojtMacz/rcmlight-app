@@ -1,7 +1,6 @@
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile"
-dockerBuildTarget = "production"
+dockerfilePath = "Dockerfile.railway"
 
 [deploy]
 startCommand = "npx prisma migrate deploy && node dist/server.js"
