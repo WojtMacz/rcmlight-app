@@ -19,5 +19,5 @@ RUN npm run build
 # ── Stage 3: production (nginx) ────────────────────────────
 FROM nginx:alpine AS production
 COPY --from=builder /app/dist /usr/share/nginx/html
-# nginx config is mounted via volume in docker-compose.prod.yml
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
