@@ -4,7 +4,7 @@ dockerfilePath = "Dockerfile"
 dockerBuildTarget = "production"
 
 [deploy]
-startCommand = "node dist/server.js"
+startCommand = "npx prisma migrate deploy && node dist/server.js"
 healthcheckPath = "/api/v1/health"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
