@@ -13,9 +13,12 @@ COPY . .
 RUN npx prisma generate
 RUN npm run build
 
-# Remove devDeps after build
+# Remove devDeps after build (init.js uses only production deps)
 RUN npm prune --production
+
+COPY start.sh ./
+RUN chmod +x start.sh
 
 ENV NODE_ENV=production
 EXPOSE 3001
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]
+CMD ["./start.sh"]
