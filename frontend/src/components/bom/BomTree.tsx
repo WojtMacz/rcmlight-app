@@ -552,11 +552,11 @@ export function BomTree({ machine }: Props) {
 
   const [systemModal, setSystemModal] = useState(false);
   const [localSystems, setLocalSystems] = useState<BomSystem[]>(machine.systems);
+  const [prevMachine, setPrevMachine] = useState(machine);
 
-  // Sync when machine changes from server
-  const prevSystemIds = machine.systems.map((s) => s.id).join(',');
-  const localSystemIds = localSystems.map((s) => s.id).join(',');
-  if (prevSystemIds !== localSystemIds) {
+  // Sync whenever machine data changes from server (catches nested changes: assemblies, groups, parts)
+  if (prevMachine !== machine) {
+    setPrevMachine(machine);
     setLocalSystems(machine.systems);
   }
 

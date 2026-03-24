@@ -248,6 +248,10 @@ Prefix: `/api/v1`
 **Problem:** Tabele `CriticalityCriteria` i `MaterialGroupTemplate` są puste dla nowych firm.
 **Rozwiązanie:** `settingsService.ts` wykrywa pusty wynik (`count === 0`) i automatycznie seeduje domyślne dane przy pierwszym zapytaniu GET.
 
+### BomTree — localSystems nie synchronizował się po dodaniu Assembly/Group/Part
+**Problem:** `localSystems` (state potrzebny do drag-drop reorder) był synchronizowany z serwerem tylko gdy zmieniały się ID systemów. Dodanie assembly/grupy/części nie zmienia ID systemów.
+**Rozwiązanie:** Zamiast porównania ID używamy porównania referencji: `prevMachine !== machine`. React Query tworzy nowy obiekt przy każdym refetchu, więc każda zmiana danych jest wykryta.
+
 ### PhysicalFailuresPage — środkowy panel pokazywał wszystkie MG
 **Problem:** Panel B wyświetlał wszystkie grupy materiałowe z BOM, nawet te bez uszkodzeń fizycznych.
 **Rozwiązanie:** Dodano `.filter((mg) => mg.physicalFailures.length > 0)` przed renderowaniem `MGSection` (linia ~512 w `PhysicalFailuresPage.tsx`).
@@ -290,6 +294,19 @@ Middleware `auth.ts` ustawia `req.user` jako cały payload JWT (z polem `sub`). 
 ---
 
 ## 7. Changelog
+
+### 2026-03-24 (sesja 8) — Bugfix: auto-odświeżanie BOM + SPA routing Railway
+
+#### Bug 1 — Brak auto-odświeżania po dodaniu elementów BOM
+- **Przyczyna:** `BomTree.tsx` przechowywał `localSystems` (potrzebne do optimistycznego drag-drop DnD). Synchronizacja z serwerem porównywała tylko ID systemów (`machine.systems.map(s => s.id).join(',')`). Dodanie Assembly/MaterialGroup/SparePart nie zmienia ID systemów → sync nie był wyzwalany → UI pokazywało stare dane.
+- **Naprawa:** Zastąpiono porównanie ID porównaniem referencji obiektu `machine`. React Query tworzy nowy obiekt przy każdym refetchu → `prevMachine !== machine` zawsze wykrywa zmiany danych serwera.
+- **Pattern:** `const [prevMachine, setPrevMachine] = useState(machine); if (prevMachine !== machine) { setPrevMachine(machine); setLocalSystems(machine.systems); }`
+
+#### Bug 2 — Błąd przy odświeżeniu strony (F5) na Railway
+- **Stan:** `frontend/nginx.conf` już zawierał `try_files $uri $uri/ /index.html;` — SPA fallback był już poprawnie skonfigurowany.
+- **Akcja:** Wystarczyło wdrożenie (push). Nowy `_redirects` ani `serve --single` nie są potrzebne (używamy nginx).
+
+---
 
 ### 2026-03-15 (sesja 7) — Usuwanie maszyny z analizą
 
