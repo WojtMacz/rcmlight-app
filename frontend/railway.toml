@@ -4,7 +4,6 @@ dockerfilePath = "Dockerfile"
 dockerBuildTarget = "production"
 
 [deploy]
-startCommand = "/start.sh"
 healthcheckPath = "/"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
