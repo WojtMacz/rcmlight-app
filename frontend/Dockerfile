@@ -19,5 +19,7 @@ RUN npm run build
 # ── Stage 3: production (nginx) ────────────────────────────
 FROM nginx:alpine AS production
 COPY --from=builder /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 80
+COPY nginx.conf /etc/nginx/conf.d/default.conf.template
+COPY start.sh /start.sh
+RUN chmod +x /start.sh
+EXPOSE 8080
