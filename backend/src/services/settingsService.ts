@@ -148,6 +148,11 @@ export const DEFAULT_MATERIAL_GROUP_TEMPLATES = [
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+export async function seedCompanyDefaults(companyId: string, prisma: PrismaClient) {
+  await seedDefaultCriteriaForCompany(companyId, prisma);
+  await seedDefaultMaterialGroupTemplates(companyId, prisma);
+}
+
 async function seedDefaultCriteriaForCompany(companyId: string, prisma: PrismaClient) {
   const categories = Object.keys(DEFAULT_CRITERIA) as CriteriaCategory[];
   for (const category of categories) {

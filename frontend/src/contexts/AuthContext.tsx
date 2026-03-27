@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { api, tokenStorage } from '@/lib/api';
+import { queryClient } from '@/lib/queryClient';
 import type { User } from '@/types';
 
 interface AuthState {
@@ -52,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       data: { user: User; accessToken: string; refreshToken: string };
     }>('/auth/login', { email, password });
     tokenStorage.set(data.data.accessToken, data.data.refreshToken);
+    queryClient.clear();
     setState({ user: data.data.user, isAuthenticated: true, isLoading: false });
   }, []);
 
@@ -62,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // ignore — clear locally regardless
     } finally {
       tokenStorage.clear();
+      queryClient.clear();
       setState({ user: null, isAuthenticated: false, isLoading: false });
     }
   }, []);

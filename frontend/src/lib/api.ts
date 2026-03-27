@@ -27,10 +27,12 @@ export const api: AxiosInstance = axios.create({
   withCredentials: true,
 });
 
-// Request interceptor — dołącz access token
+// Request interceptor — dołącz access token (tylko jeśli nie ustawiono go ręcznie)
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = tokenStorage.getAccess();
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (token && !config.headers.Authorization) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
   return config;
 });
 

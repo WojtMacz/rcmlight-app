@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -8,6 +9,7 @@ export const ADMIN_TOKEN_KEY = 'rcm_super_admin_token';
 
 export default function AdminLoginPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -20,6 +22,7 @@ export default function AdminLoginPage() {
     try {
       const res = await api.post<{ data: { token: string } }>('/admin/login', { email, password });
       localStorage.setItem(ADMIN_TOKEN_KEY, res.data.data.token);
+      queryClient.clear();
       navigate('/admin/companies');
     } catch {
       setError('Nieprawidłowe dane logowania');

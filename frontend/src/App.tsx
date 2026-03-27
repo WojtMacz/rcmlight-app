@@ -30,6 +30,7 @@ const AdminLoginPage = lazy(() => import('@/pages/admin/AdminLoginPage'));
 const AdminLayout = lazy(() => import('@/pages/admin/AdminLayout'));
 const AdminCompaniesPage = lazy(() => import('@/pages/admin/AdminCompaniesPage'));
 const AdminCompanyDetailPage = lazy(() => import('@/pages/admin/AdminCompanyDetailPage'));
+const AdminNewCompanyPage = lazy(() => import('@/pages/admin/AdminNewCompanyPage'));
 
 function PageLoader() {
   return (
@@ -117,6 +118,7 @@ export default function App() {
           <Route path="/admin" element={<Suspense fallback={<PageLoader />}><AdminLayout /></Suspense>}>
             <Route index element={<Navigate to="/admin/companies" replace />} />
             <Route path="companies" element={<Suspense fallback={<PageLoader />}><AdminCompaniesPage /></Suspense>} />
+            <Route path="companies/new" element={<Suspense fallback={<PageLoader />}><AdminNewCompanyPage /></Suspense>} />
             <Route path="companies/:id" element={<Suspense fallback={<PageLoader />}><AdminCompanyDetailPage /></Suspense>} />
           </Route>
 

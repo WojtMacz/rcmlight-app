@@ -192,7 +192,21 @@ Prefix: `/api/v1`
 | DELETE | `/settings/material-groups-dictionary/:id` | ADMIN (soft-delete) |
 
 ### Company / Users / Admin
-`/company`, `/users`, `/admin/companies`
+`/company`, `/users`
+
+### Admin (Super Admin Token Required)
+| Metoda | Ścieżka | Opis |
+|--------|---------|------|
+| POST | `/admin/login` | Logowanie super admina |
+| GET | `/admin/companies` | Lista wszystkich firm |
+| POST | `/admin/companies` | Utwórz firmę + admina + seed danych |
+| GET | `/admin/companies/:id` | Szczegóły firmy (users, machines) |
+| PATCH | `/admin/companies/:id` | Edytuj firmę (nazwa, parametry ekon.) |
+| PATCH | `/admin/companies/:id/toggle-active` | Aktywuj / dezaktywuj |
+| POST | `/admin/companies/:id/impersonate` | Token ADMIN na 30 min |
+| POST | `/admin/companies/:id/users` | Dodaj użytkownika do firmy |
+| PATCH | `/admin/users/:id` | Zmień rolę / hasło / status usera |
+| DELETE | `/admin/companies/:id` | Usuń firmę i wszystkie dane (nieodwracalne) |
 
 ---
 
@@ -209,7 +223,7 @@ Prefix: `/api/v1`
 | Settings API | ✅ Ukończony | lazy-seed domyślnych danych |
 | Company API | ✅ Ukończony | |
 | Users API | ✅ Ukończony | |
-| Admin API | ✅ Ukończony | Super Admin panel |
+| Admin API | ✅ Ukończony | Pełny Multi-Tenancy: tworzenie, edycja, usuwanie firm i users |
 | Testy | ⚠️ Częściowy | Tylko auth (25 testów); brak testów dla BOM/RCM |
 
 ### Frontend
@@ -229,7 +243,11 @@ Prefix: `/api/v1`
 | Ustawienia — Kryteria krytyczności | ✅ Ukończony | zakładki, inline edycja, reset |
 | Ustawienia — Słownik grup mat. | ✅ Ukończony | zakładki, inline CRUD |
 | BOM — select ze słownika | ✅ Ukończony | MaterialGroupModal przebudowany |
-| Super Admin panel | ✅ Ukończony | |
+| Super Admin — lista firm | ✅ Ukończony | toggle-active, impersonuj, szczegóły |
+| Super Admin — tworzenie firmy | ✅ Ukończony | form + modal kredencjali + auto-seed |
+| Super Admin — szczegóły firmy | ✅ Ukończony | zakładki: Info/Użytkownicy/Maszyny/Akcje |
+| Super Admin — zarządzanie userami | ✅ Ukończony | dodaj usera, zmień hasło, dezaktywuj |
+| Super Admin — usuwanie firmy | ✅ Ukończony | ikona kosza w liście + potwierdzenie nazwą |
 | Migracja DB | ✅ Ukończony | 2 migracje zastosowane |
 
 ---
@@ -255,6 +273,22 @@ Prefix: `/api/v1`
 ### PhysicalFailuresPage — środkowy panel pokazywał wszystkie MG
 **Problem:** Panel B wyświetlał wszystkie grupy materiałowe z BOM, nawet te bez uszkodzeń fizycznych.
 **Rozwiązanie:** Dodano `.filter((mg) => mg.physicalFailures.length > 0)` przed renderowaniem `MGSection` (linia ~512 w `PhysicalFailuresPage.tsx`).
+
+### Axios interceptor nadpisywał token super admina
+**Problem:** Request interceptor w `api.ts` bezwarunkowo ustawiał `Authorization: Bearer <regularToken>`, nadpisując nagłówek ręcznie ustawiony przez panel admina. Super admin otrzymywał 401 z własnych endpointów gdy user był zalogowany w innej zakładce.
+**Rozwiązanie:** Interceptor dodaje token tylko gdy `!config.headers.Authorization` — nie nadpisuje ręcznie ustawionych nagłówków.
+
+### React Query cache między sesjami różnych firm
+**Problem:** `queryKey: ['machines', ...]` nie zawiera `companyId`. Po zalogowaniu na inną firmę, Query używał cache z poprzedniej sesji (np. 0 maszyn z firmy testowej zamiast 1 z Demo Company).
+**Rozwiązanie:** `queryClient.clear()` w `AuthContext` przy każdym `login()` i `logout()` czyści cały cache — nowa sesja zawsze pobiera świeże dane.
+
+### Super admin wylogowywany po zalogowaniu usera w innej zakładce
+**Problem:** Interceptor nadpisywał token (patrz wyżej). Super admin dostawał 401, mój fix usuwał `ADMIN_TOKEN_KEY` z localStorage tworząc pętlę wylogowania.
+**Rozwiązanie:** Usunięto błędny fix usuwania tokenu. Prawdziwy fix to naprawa interceptora (patrz wyżej).
+
+### TanStack Query cache po ponownym logowaniu super admina
+**Problem:** Po wygaśnięciu sesji super admina (token 4h) strona `/admin/companies` pokazywała błąd z cache zamiast świeżego requestu.
+**Rozwiązanie:** `staleTime: 0` + `retry: false` na query admina + `queryClient.clear()` w `AdminLoginPage` po zalogowaniu.
 
 ---
 
@@ -294,6 +328,56 @@ Middleware `auth.ts` ustawia `req.user` jako cały payload JWT (z polem `sub`). 
 ---
 
 ## 7. Changelog
+
+### 2026-03-27 (sesja 10) — Bugfixes multi-tenancy + usuwanie firm
+
+#### Backend — nowy endpoint
+- **`DELETE /admin/companies/:id`** — usuwa firmę i WSZYSTKIE jej dane w bezpiecznej kolejności:
+  1. `FunctionDef` (kaskada: FunctionalFailure → PhysicalFailure → FailureCause → Criticality/PMTask)
+  2. `Machine` (kaskada: System → Assembly → MaterialGroup → SparePart)
+  3. `CriticalityCriteria` + `MaterialGroupTemplate`
+  4. `User` (kaskada: RefreshToken)
+  5. `Company` (kaskada: InviteToken)
+
+#### Frontend — nowe funkcje
+- **`AdminCompaniesPage`** — ikona kosza 🗑 w każdym wierszu tabeli; po kliknięciu rozwija się inline pasek potwierdzenia z polem do wpisania nazwy firmy
+- **`AdminCompanyDetailPage`** — dodana sekcja "Usuń firmę" w zakładce Akcje (z tym samym mechanizmem potwierdzenia nazwą)
+
+#### Bugfixes
+- **`api.ts`** — interceptor request nie nadpisuje już ręcznie ustawionego `Authorization` (fix: `if (token && !config.headers.Authorization)`)
+- **`AuthContext.tsx`** — `queryClient.clear()` po każdym login/logout, eliminuje cross-session cache między różnymi firmami
+- **`AdminLoginPage.tsx`** — `queryClient.clear()` po zalogowaniu super admina
+- **`AdminCompaniesPage`** — `staleTime: 0` + `retry: false` na query listy firm
+
+---
+
+### 2026-03-26 (sesja 9) — Multi-Tenancy: pełny panel Super Admina
+
+#### Backend — nowe endpointy `/api/v1/admin/*`
+- **`POST /admin/companies`** — tworzy firmę + admina + uruchamia `seedCompanyDefaults()` (kryteria + szablony MG)
+- **`PATCH /admin/companies/:id`** — edycja nazwy i parametrów ekonomicznych firmy
+- **`POST /admin/companies/:id/users`** — dodaje użytkownika do dowolnej firmy (dla Super Admina)
+- **`PATCH /admin/users/:id`** — zmiana roli, statusu (isActive) lub hasła dowolnego użytkownika
+- **`services/settingsService.ts`** — wyeksportowano `seedCompanyDefaults(companyId, prisma)` (wcześniej prywatna funkcja)
+- **`services/adminService.ts`** — dodano `createCompany`, `addUserToCompany`, `updateAdminUser`, `updateCompany`
+
+#### Frontend — nowe/zaktualizowane strony
+- **`AdminNewCompanyPage.tsx`** (nowa) — formularz tworzenia firmy:
+  - Pola: nazwa, slug (auto z nazwy + konwersja polskich znaków), parametry ekonomiczne
+  - Sekcja admina: imię, nazwisko, email, hasło z generatorem losowym
+  - Po sukcesie: modal z kredencjalami + przycisk "Skopiuj dane" (do schowka)
+- **`AdminCompanyDetailPage.tsx`** — przebudowany na zakładki:
+  - **Informacje** — podgląd + edycja nazwy i parametrów ekon. (inline form)
+  - **Użytkownicy** — tabela z akcjami: Zmień hasło (inline), Aktywuj/Dezaktywuj; przycisk "+ Dodaj użytkownika"
+  - **Maszyny** — tylko podgląd (lista maszyn firmy)
+  - **Akcje** — Aktywuj/Dezaktywuj całą firmę
+- **`AdminCompaniesPage.tsx`** — dodano przycisk "Dodaj nową firmę" (→ `/admin/companies/new`)
+- **`App.tsx`** — dodano trasę `/admin/companies/new`
+
+#### Tenant Isolation — potwierdzenie
+- Izolacja danych jest zapewniona przez middleware `tenantIsolation` (`companyId` z JWT → `req.companyId`)
+- Wszystkie zapytania BOM/RCM/Settings filtrowane przez `companyId`
+- Super Admin ma osobny token (role: `SUPER_ADMIN`) — nie ma dostępu do danych firm przez zwykłe API
 
 ### 2026-03-24 (sesja 8) — Bugfix: auto-odświeżanie BOM + SPA routing Railway
 
