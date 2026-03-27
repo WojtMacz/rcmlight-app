@@ -9,9 +9,30 @@
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 
+async function upsertSuperAdmin(prisma) {
+  const email = process.env.SUPER_ADMIN_EMAIL || 'superadmin@rcmlight.app';
+  const password = process.env.SUPER_ADMIN_PASSWORD || 'SuperAdmin123!';
+  const passwordHash = await bcrypt.hash(password, 12);
+
+  const existing = await prisma.superAdmin.findFirst();
+  if (existing) {
+    await prisma.superAdmin.update({
+      where: { id: existing.id },
+      data: { email, passwordHash },
+    });
+    console.log(`[init] SuperAdmin updated: ${email}`);
+  } else {
+    await prisma.superAdmin.create({ data: { email, passwordHash } });
+    console.log(`[init] SuperAdmin created: ${email}`);
+  }
+}
+
 async function init() {
   const prisma = new PrismaClient();
   try {
+    // Zawsze aktualizuj super admina (env vars mają pierwszeństwo)
+    await upsertSuperAdmin(prisma);
+
     const count = await prisma.company.count();
     if (count > 0) {
       console.log('[init] Database already initialized — skipping seed.');
@@ -41,15 +62,6 @@ async function init() {
         passwordHash,
         companyId: company.id,
         isActive: true,
-      },
-    });
-
-    await prisma.superAdmin.upsert({
-      where: { email: 'superadmin@rcmlight.app' },
-      update: {},
-      create: {
-        email: 'superadmin@rcmlight.app',
-        passwordHash: await bcrypt.hash('SuperAdmin123!', 12),
       },
     });
 
