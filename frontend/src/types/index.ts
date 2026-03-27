@@ -39,6 +39,15 @@ export interface Machine {
   updatedAt: string;
 }
 
+export interface MachineStats {
+  systemsCount: number;
+  causesCount: number;
+  highCriticalityCount: number;
+  causesWithoutPmCount: number;
+  pmTasksCount: number;
+  completionPercent: number;
+}
+
 // ── API responses ────────────────────────────────────────────
 
 export interface ApiResponse<T> {

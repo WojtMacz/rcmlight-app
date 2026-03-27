@@ -104,6 +104,89 @@ export async function updateMachine(
   return prisma.machine.update({ where: { id: machineId }, data });
 }
 
+export async function getMachineStats(
+  machineId: string,
+  companyId: string,
+  prisma: PrismaClient,
+) {
+  await getMachineOrFail(machineId, companyId, prisma);
+
+  // 1. Systems count
+  const systemsCount = await prisma.system.count({ where: { machineId } });
+
+  if (systemsCount === 0) {
+    return { systemsCount: 0, causesCount: 0, highCriticalityCount: 0, causesWithoutPmCount: 0, pmTasksCount: 0, completionPercent: 0 };
+  }
+
+  // 2. Collect hierarchy IDs
+  const systems = await prisma.system.findMany({
+    where: { machineId },
+    select: { id: true, assemblies: { select: { id: true } } },
+  });
+  const sIds = systems.map((s) => s.id);
+  const aIds = systems.flatMap((s) => s.assemblies.map((a) => a.id));
+
+  const fdWhere = sIds.length > 0 || aIds.length > 0
+    ? { OR: [...(sIds.length ? [{ systemId: { in: sIds } }] : []), ...(aIds.length ? [{ assemblyId: { in: aIds } }] : [])] }
+    : { id: 'none' };
+
+  const functionDefs = await prisma.functionDef.findMany({ where: fdWhere, select: { id: true } });
+  const fdIds = functionDefs.map((f) => f.id);
+  if (fdIds.length === 0) {
+    return { systemsCount, causesCount: 0, highCriticalityCount: 0, causesWithoutPmCount: 0, pmTasksCount: 0, completionPercent: 0 };
+  }
+
+  const funcFailures = await prisma.functionalFailure.findMany({
+    where: { functionId: { in: fdIds } },
+    select: { id: true },
+  });
+  const ffIds = funcFailures.map((f) => f.id);
+  if (ffIds.length === 0) {
+    return { systemsCount, causesCount: 0, highCriticalityCount: 0, causesWithoutPmCount: 0, pmTasksCount: 0, completionPercent: 0 };
+  }
+
+  const physFailures = await prisma.physicalFailure.findMany({
+    where: { functionalFailureId: { in: ffIds } },
+    select: { id: true },
+  });
+  const pfIds = physFailures.map((p) => p.id);
+  if (pfIds.length === 0) {
+    return { systemsCount, causesCount: 0, highCriticalityCount: 0, causesWithoutPmCount: 0, pmTasksCount: 0, completionPercent: 0 };
+  }
+
+  const causeWhere = { physicalFailureId: { in: pfIds } };
+
+  // 3. Cause counts
+  const causesCount = await prisma.failureCause.count({ where: causeWhere });
+  const causesWithPmCount = await prisma.failureCause.count({
+    where: { ...causeWhere, pmTask: { isNot: null } },
+  });
+  const causesWithoutPmCount = causesCount - causesWithPmCount;
+
+  // 4. Active PM tasks
+  const pmTasksCount = await prisma.pMTask.count({
+    where: { cause: causeWhere, isActive: true },
+  });
+
+  // 5. High criticality — WKF = avg(WK, WP), WK = avg(S,Q,P,F,D), WP = avg(C,L)
+  const criticalities = await prisma.criticality.findMany({
+    where: { cause: causeWhere },
+    select: { safety: true, quality: true, production: true, frequency: true, availability: true, repairCost: true, laborTime: true },
+  });
+  const highCriticalityCount = criticalities.filter((c) => {
+    const wk = (c.safety + c.quality + c.production + c.frequency + c.availability) / 5;
+    const wp = (c.repairCost + c.laborTime) / 2;
+    return (wk + wp) / 2 >= 2.0;
+  }).length;
+
+  // 6. Completion
+  const completionPercent = causesCount > 0
+    ? Math.round((causesWithPmCount / causesCount) * 100)
+    : 0;
+
+  return { systemsCount, causesCount, highCriticalityCount, causesWithoutPmCount, pmTasksCount, completionPercent };
+}
+
 export async function deleteMachine(
   machineId: string,
   companyId: string,

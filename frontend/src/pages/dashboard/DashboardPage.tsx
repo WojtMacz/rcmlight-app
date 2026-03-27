@@ -1,12 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, MapPin, Calendar, ChevronRight, Cpu, Trash2 } from 'lucide-react';
-import { useMachines, useDeleteMachine } from '@/hooks/useMachines';
+import { useMachines, useDeleteMachine, useMachineStats } from '@/hooks/useMachines';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   AlertDialog,
@@ -20,7 +18,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
-import type { Machine } from '@/types';
+import type { Machine, MachineStats } from '@/types';
 
 function MachineCardSkeleton() {
   return (
@@ -30,11 +28,115 @@ function MachineCardSkeleton() {
         <Skeleton className="h-3 w-1/4 mt-1" />
       </CardHeader>
       <CardContent className="space-y-3">
-        <Skeleton className="h-3 w-1/2" />
-        <Skeleton className="h-2 w-full" />
+        <Skeleton className="h-20 w-full" />
         <Skeleton className="h-8 w-full" />
       </CardContent>
     </Card>
+  );
+}
+
+function StatusDot({ stats }: { stats: MachineStats }) {
+  if (stats.causesCount === 0) return null;
+
+  let color = 'bg-green-500';
+  let title = 'Analiza ukończona';
+
+  if (stats.highCriticalityCount > 0 && stats.causesWithoutPmCount > 0) {
+    color = 'bg-red-500';
+    title = 'Wysokie WKF bez zadań PM';
+  } else if (stats.causesWithoutPmCount > 0) {
+    color = 'bg-orange-400';
+    title = 'Przyczyny bez zadań PM';
+  }
+
+  return (
+    <span
+      className={`inline-block h-2.5 w-2.5 rounded-full ${color} shrink-0 mt-1`}
+      title={title}
+    />
+  );
+}
+
+function StatTile({
+  label,
+  value,
+  valueClass,
+}: {
+  label: string;
+  value: string | number;
+  valueClass?: string;
+}) {
+  return (
+    <div className="bg-muted/50 rounded-md px-2.5 py-2 text-center">
+      <div className={`text-lg font-bold leading-tight ${valueClass ?? 'text-foreground'}`}>
+        {value}
+      </div>
+      <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">{label}</div>
+    </div>
+  );
+}
+
+function MachineCardStats({ machineId }: { machineId: string }) {
+  const { data: stats, isLoading } = useMachineStats(machineId);
+
+  if (isLoading) {
+    return <Skeleton className="h-20 w-full" />;
+  }
+
+  if (!stats) return null;
+
+  const pctClass =
+    stats.completionPercent === 100
+      ? 'text-green-600'
+      : stats.completionPercent >= 50
+        ? 'text-orange-500'
+        : 'text-destructive';
+
+  return (
+    <div className="space-y-2">
+      {/* 3×2 stat grid */}
+      <div className="grid grid-cols-3 gap-1.5">
+        <StatTile label="Systemy" value={stats.systemsCount} />
+        <StatTile label="Przyczyny" value={stats.causesCount} />
+        <StatTile
+          label="Wysokie WKF"
+          value={stats.highCriticalityCount}
+          valueClass={stats.highCriticalityCount > 0 ? 'text-destructive' : undefined}
+        />
+        <StatTile
+          label="Bez PM"
+          value={stats.causesWithoutPmCount}
+          valueClass={stats.causesWithoutPmCount > 0 ? 'text-orange-500' : undefined}
+        />
+        <StatTile label="Zadania PM" value={stats.pmTasksCount} />
+        <StatTile
+          label="Ukończenie"
+          value={`${stats.completionPercent}%`}
+          valueClass={pctClass}
+        />
+      </div>
+
+      {/* Alert badges */}
+      {(stats.highCriticalityCount > 0 || stats.causesWithoutPmCount > 0 || stats.completionPercent === 100) && (
+        <div className="flex flex-wrap gap-1">
+          {stats.highCriticalityCount > 0 && (
+            <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700">
+              {stats.highCriticalityCount} wysokie WKF
+            </span>
+          )}
+          {stats.causesWithoutPmCount > 0 && (
+            <span className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-medium text-orange-700">
+              {stats.causesWithoutPmCount} bez PM
+            </span>
+          )}
+          {stats.completionPercent === 100 && stats.causesCount > 0 && (
+            <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+              Analiza ukończona
+            </span>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -48,10 +150,7 @@ function MachineCard({
   onDeleteRequest: (machine: Machine) => void;
 }) {
   const navigate = useNavigate();
-  // Placeholder progress — will be computed from RCM analysis in future prompt
-  const completedSteps: number = 0;
-  const totalSteps = 6;
-  const progressPct = Math.round((completedSteps / totalSteps) * 100);
+  const { data: stats } = useMachineStats(machine.id);
 
   const formattedDate = new Date(machine.updatedAt).toLocaleDateString('pl-PL', {
     day: 'numeric',
@@ -67,10 +166,8 @@ function MachineCard({
             <CardTitle className="text-base leading-snug">{machine.name}</CardTitle>
             <p className="text-xs text-muted-foreground mt-0.5 font-mono">Nr: {machine.number}</p>
           </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <Badge variant={completedSteps === totalSteps ? 'success' : 'secondary'}>
-              {completedSteps}/{totalSteps}
-            </Badge>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {stats && <StatusDot stats={stats} />}
             {canDelete && (
               <button
                 onClick={(e) => { e.stopPropagation(); onDeleteRequest(machine); }}
@@ -82,34 +179,26 @@ function MachineCard({
             )}
           </div>
         </div>
-      </CardHeader>
-
-      <CardContent className="flex flex-col flex-1 gap-3">
         {machine.location && (
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-1">
             <MapPin className="h-3.5 w-3.5 shrink-0" />
             <span className="truncate">{machine.location}</span>
           </div>
         )}
+      </CardHeader>
 
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Calendar className="h-3.5 w-3.5 shrink-0" />
-          <span>Akt. {formattedDate}</span>
-        </div>
+      <CardContent className="flex flex-col flex-1 gap-3">
+        <MachineCardStats machineId={machine.id} />
 
-        <div className="space-y-1">
-          <div className="flex justify-between text-xs">
-            <span className="text-muted-foreground">Postęp analizy</span>
-            <span className="font-medium">{progressPct}%</span>
+        <div className="mt-auto pt-1 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Calendar className="h-3.5 w-3.5 shrink-0" />
+            <span>Akt. {formattedDate}</span>
           </div>
-          <Progress value={progressPct} />
-        </div>
-
-        <div className="mt-auto pt-1">
           <Button
             variant="outline"
             size="sm"
-            className="w-full group-hover:border-brand-navy/40 transition-colors"
+            className="group-hover:border-brand-navy/40 transition-colors"
             onClick={() => navigate(`/app/machines/${machine.id}`)}
           >
             Otwórz analizę

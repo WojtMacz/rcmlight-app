@@ -4,6 +4,7 @@ import { exportBom, importBom } from '../services/bomImportExportService';
 import {
   createMachine,
   deleteMachine,
+  getMachineStats,
   getMachineWithBOM,
   listMachines,
   updateMachine,
@@ -66,6 +67,15 @@ export async function remove(req: Request, res: Response, next: NextFunction): P
     const { force } = deleteQuerySchema.parse(req.query);
     await deleteMachine(param(req, 'id'), cid(req), force, prisma);
     res.json({ status: 'ok', data: null });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getStats(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const stats = await getMachineStats(param(req, 'id'), cid(req), prisma);
+    res.json({ status: 'ok', data: stats });
   } catch (err) {
     next(err);
   }

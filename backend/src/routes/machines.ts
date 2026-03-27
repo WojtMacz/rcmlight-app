@@ -22,6 +22,7 @@ router.use(authenticate, tenantIsolation);
 router.get('/', machinesCtrl.list);
 router.post('/', requireRole('ANALYST', 'ADMIN'), machinesCtrl.create);
 
+router.get('/:id/stats', machinesCtrl.getStats);
 router.get('/:id', machinesCtrl.getOne);
 router.patch('/:id', requireRole('ANALYST', 'ADMIN'), machinesCtrl.update);
 router.delete('/:id', requireRole('ADMIN'), machinesCtrl.remove);

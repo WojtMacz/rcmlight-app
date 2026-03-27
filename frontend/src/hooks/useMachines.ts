@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { Machine, PaginatedResponse } from '@/types';
+import type { Machine, MachineStats, PaginatedResponse } from '@/types';
 
 interface UseMachinesOptions {
   page?: number;
@@ -32,6 +32,17 @@ export function useMachine(machineId: string) {
         `/machines/${machineId}`,
       );
       return data.data.machine;
+    },
+    enabled: Boolean(machineId),
+  });
+}
+
+export function useMachineStats(machineId: string) {
+  return useQuery({
+    queryKey: ['machineStats', machineId],
+    queryFn: async () => {
+      const { data } = await api.get<{ data: MachineStats }>(`/machines/${machineId}/stats`);
+      return data.data;
     },
     enabled: Boolean(machineId),
   });
